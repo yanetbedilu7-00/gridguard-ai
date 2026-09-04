@@ -4,7 +4,8 @@
    ============================================ */
 
 // Backend URL - CHANGE THIS TO YOUR VERCEL URL
-const BACKEND_URL = 'https://your-project.vercel.app';
+
+const BACKEND_URL = 'https://gridguard-ai.vercel.app';
 
 // ============================================
 // STATE

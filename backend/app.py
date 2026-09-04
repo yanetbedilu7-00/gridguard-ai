@@ -1,19 +1,34 @@
 """
 GRIDGUARD AI - Vercel Compatible Backend
-No background threads, no Socket.IO, no file writes
+Fixed to serve index.html at root URL
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import random
 import json
+import os
 from datetime import datetime
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../')
 
 # Enable CORS for all origins
 CORS(app, origins=['*'])
+
+# ============================================
+# SERVE FRONTEND
+# ============================================
+
+@app.route('/')
+def serve_index():
+    """Serve the main index.html"""
+    return send_from_directory('../', 'index.html')
+
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    """Serve assets folder"""
+    return send_from_directory('../assets', filename)
 
 # ============================================
 # RISK ANALYSIS
@@ -77,11 +92,8 @@ def analyze_risk(voltage, current, temperature, scenario='normal'):
     }
 
 # ============================================
-# IN-MEMORY STATE (per request)
+# DATA GENERATION
 # ============================================
-
-# Simple state - each request is independent
-# For demo purposes only
 
 def generate_grid_data(scenario='normal'):
     """Generate realistic grid data for a single request"""
@@ -121,26 +133,12 @@ def generate_grid_data(scenario='normal'):
     }
 
 # ============================================
-# ROUTES
+# API ENDPOINTS
 # ============================================
-
-@app.route('/')
-def index():
-    return jsonify({
-        'status': 'online',
-        'message': 'GRIDGUARD AI Backend is running on Vercel',
-        'version': '2.0.0',
-        'timestamp': datetime.now().isoformat(),
-        'endpoints': {
-            'GET /api/status': 'System status',
-            'GET /api/data/current': 'Latest grid data',
-            'GET /api/data/current?scenario=overheat': 'Get data with scenario',
-            'POST /api/simulate': 'Run simulation'
-        }
-    })
 
 @app.route('/api/status')
 def get_status():
+    """Get system status"""
     return jsonify({
         'status': 'online',
         'version': '2.0.0',
@@ -154,47 +152,9 @@ def get_current_data():
     data = generate_grid_data(scenario)
     return jsonify(data)
 
-@app.route('/api/simulate', methods=['POST'])
-def simulate_intervention():
-    """Simulate an intervention"""
-    try:
-        data = request.json or {}
-        current_risk = data.get('risk', 0)
-        scenario = data.get('scenario', 'normal')
-        
-        # Get current data with scenario
-        current_data = generate_grid_data(scenario)
-        current_risk = current_data['risk']
-        
-        if current_risk > 70:
-            reduction = 57
-        elif current_risk > 40:
-            reduction = 35
-        else:
-            reduction = 15
-        
-        simulated_risk = max(0, current_risk - reduction)
-        
-        return jsonify({
-            'current_risk': round(current_risk, 1),
-            'simulated_risk': round(simulated_risk, 1),
-            'reduction': reduction,
-            'status': 'SAFE' if simulated_risk < 30 else 'MONITORING',
-            'intervention': 'Load shedding + critical protection' if current_risk > 40 else 'Monitoring only',
-            'data': current_data
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# ============================================
-# VERCEL ROUTES
-# ============================================
-
 @app.route('/api/data/history')
 def get_history():
     """Get historical data (simulated)"""
-    # Generate some history data
     history = []
     scenarios = ['normal', 'normal', 'normal', 'overheat', 'normal', 'overload', 'normal']
     for _ in range(20):
@@ -228,9 +188,45 @@ def get_stats():
         'alerts': sum(1 for r in risks if r > 50)
     })
 
+@app.route('/api/simulate', methods=['POST'])
+def simulate_intervention():
+    """Simulate an intervention"""
+    try:
+        data = request.json or {}
+        current_risk = data.get('risk', 0)
+        scenario = data.get('scenario', 'normal')
+        
+        current_data = generate_grid_data(scenario)
+        current_risk = current_data['risk']
+        
+        if current_risk > 70:
+            reduction = 57
+        elif current_risk > 40:
+            reduction = 35
+        else:
+            reduction = 15
+        
+        simulated_risk = max(0, current_risk - reduction)
+        
+        return jsonify({
+            'current_risk': round(current_risk, 1),
+            'simulated_risk': round(simulated_risk, 1),
+            'reduction': reduction,
+            'status': 'SAFE' if simulated_risk < 30 else 'MONITORING',
+            'intervention': 'Load shedding + critical protection' if current_risk > 40 else 'Monitoring only',
+            'data': current_data
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # ============================================
-# Error handler
+# ERROR HANDLER
 # ============================================
+
+@app.errorhandler(404)
+def handle_404(error):
+    return jsonify({'error': 'Not found'}), 404
 
 @app.errorhandler(500)
 def handle_500(error):
@@ -240,11 +236,8 @@ def handle_500(error):
     }), 500
 
 # ============================================
-# For local testing
+# FOR LOCAL TESTING
 # ============================================
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
-# Vercel expects 'app' to be the WSGI application
-# This is already defined above
