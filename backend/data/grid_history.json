@@ -1,0 +1,15 @@
+[
+  {
+    "voltage": 217.8,
+    "current": 6.5,
+    "temperature": 35.9,
+    "power": 1.42,
+    "risk": 10,
+    "risk_level": "NORMAL",
+    "conditions": [
+      "Current rising (6.5 A)"
+    ],
+    "scenario": "normal",
+    "timestamp": "2026-09-04T03:57:12.800083"
+  }
+]
