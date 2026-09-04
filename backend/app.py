@@ -1,6 +1,6 @@
 """
 GRIDGUARD AI - Flask Application
-Complete Backend with WebSocket Support
+ULTIMATE FIX - No JSON Errors
 """
 
 from flask import Flask, send_from_directory, jsonify, request
@@ -23,27 +23,73 @@ CORS(app, origins=['*'])
 # Initialize SocketIO
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
-# Data file
-DATA_FILE = os.path.join(os.path.dirname(__file__), 'data', 'grid_history.json')
+# Data file path
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+DATA_FILE = os.path.join(DATA_DIR, 'grid_history.json')
 
-# Ensure data directory exists
-os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+# ============================================
+# ULTIMATE DATA FILE FIX
+# ============================================
 
-# Create empty JSON file if it doesn't exist or is empty
-def ensure_data_file():
-    """Ensure data file exists and is valid JSON"""
-    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
+def init_data_file():
+    """Create fresh data file"""
+    # Create directory
+    os.makedirs(DATA_DIR, exist_ok=True)
+    
+    # Write fresh empty array
+    with open(DATA_FILE, 'w') as f:
+        json.dump([], f)
+    
+    print("Data file initialized successfully")
+
+def safe_read_data():
+    """Safely read data from file"""
+    try:
+        # Ensure file exists
+        if not os.path.exists(DATA_FILE):
+            init_data_file()
+            return []
+        
+        # Read file
+        with open(DATA_FILE, 'r') as f:
+            content = f.read().strip()
+            
+            # If empty, reinitialize
+            if not content:
+                init_data_file()
+                return []
+            
+            # Parse JSON
+            data = json.loads(content)
+            return data if isinstance(data, list) else []
+            
+    except json.JSONDecodeError:
+        # File corrupted - reinitialize
+        print("Data file corrupted, reinitializing...")
+        init_data_file()
+        return []
+    except Exception as e:
+        print(f"Error reading data: {e}")
+        init_data_file()
+        return []
+
+def safe_write_data(data):
+    """Safely write data to file"""
+    try:
+        # Ensure it's a list
+        if not isinstance(data, list):
+            data = []
+        
+        # Write to file
         with open(DATA_FILE, 'w') as f:
-            json.dump([], f)
-    else:
-        try:
-            with open(DATA_FILE, 'r') as f:
-                json.load(f)
-        except json.JSONDecodeError:
-            with open(DATA_FILE, 'w') as f:
-                json.dump([], f)
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error writing data: {e}")
+        return False
 
-ensure_data_file()
+# Initialize on startup
+init_data_file()
 
 # Global state
 current_state = {
@@ -62,19 +108,21 @@ current_state = {
 def save_reading(data):
     """Save a grid reading to history"""
     try:
-        ensure_data_file()
+        # Read existing data
+        history = safe_read_data()
         
-        with open(DATA_FILE, 'r') as f:
-            history = json.load(f)
-        
+        # Add timestamp
         data['timestamp'] = datetime.now().isoformat()
+        
+        # Append new data
         history.append(data)
+        
+        # Keep only last 500 records
         if len(history) > 500:
             history = history[-500:]
         
-        with open(DATA_FILE, 'w') as f:
-            json.dump(history, f, indent=2)
-        return True
+        # Write back
+        return safe_write_data(history)
     except Exception as e:
         print(f"Error saving data: {e}")
         return False
@@ -82,9 +130,7 @@ def save_reading(data):
 def get_history(limit=100):
     """Get historical data"""
     try:
-        ensure_data_file()
-        with open(DATA_FILE, 'r') as f:
-            history = json.load(f)
+        history = safe_read_data()
         return history[-limit:] if history else []
     except Exception as e:
         print(f"Error reading history: {e}")
@@ -418,6 +464,7 @@ def handle_simulation():
 # ============================================
 
 if __name__ == '__main__':
+    # Start background thread
     thread = threading.Thread(target=generate_grid_data)
     thread.daemon = True
     thread.start()

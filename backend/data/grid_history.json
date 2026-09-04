@@ -1,15 +1,41 @@
 [
   {
-    "voltage": 217.8,
-    "current": 6.5,
-    "temperature": 35.9,
-    "power": 1.42,
+    "voltage": 217.4,
+    "current": 7.0,
+    "temperature": 35.8,
+    "power": 1.53,
+    "risk": 25,
+    "risk_level": "NORMAL",
+    "conditions": [
+      "High current detected (7.0 A)"
+    ],
+    "scenario": "normal",
+    "timestamp": "2026-09-04T04:04:43.556975"
+  },
+  {
+    "voltage": 219.7,
+    "current": 6.1,
+    "temperature": 37.6,
+    "power": 1.34,
     "risk": 10,
     "risk_level": "NORMAL",
     "conditions": [
-      "Current rising (6.5 A)"
+      "Current rising (6.1 A)"
     ],
     "scenario": "normal",
-    "timestamp": "2026-09-04T03:57:12.800083"
+    "timestamp": "2026-09-04T04:04:44.230887"
+  },
+  {
+    "voltage": 218.5,
+    "current": 6.4,
+    "temperature": 36.6,
+    "power": 1.4,
+    "risk": 10,
+    "risk_level": "NORMAL",
+    "conditions": [
+      "Current rising (6.4 A)"
+    ],
+    "scenario": "normal",
+    "timestamp": "2026-09-04T04:04:44.327609"
   }
 ]
