@@ -1,10 +1,10 @@
 /* ============================================
-   GRIDGUARD AI - COMPLETE APPLICATION
-   Fixed WebSocket Connection
+   GRIDGUARD AI - Vercel Compatible Frontend
+   REST API only - No WebSocket
    ============================================ */
 
-// Backend URL
-const BACKEND_URL = 'http://localhost:5000';
+// Backend URL - CHANGE THIS TO YOUR VERCEL URL
+const BACKEND_URL = 'https://your-project.vercel.app';
 
 // ============================================
 // STATE
@@ -18,9 +18,7 @@ const state = {
     temperature: 36.2,
     power: 1.28,
     connected: false,
-    socket: null,
-    reconnectAttempts: 0,
-    maxReconnectAttempts: 10
+    updateInterval: null
 };
 
 // ============================================
@@ -66,9 +64,9 @@ function connectBackend() {
         .then(response => response.json())
         .then(data => {
             state.connected = true;
-            addTimeline('Backend connected - Real data mode active', 'info');
+            addTimeline('Backend connected - ' + BACKEND_URL, 'info');
             console.log('Connected to backend:', data);
-            connectWebSocket();
+            startPolling();
         })
         .catch(() => {
             state.connected = false;
@@ -79,145 +77,29 @@ function connectBackend() {
 }
 
 // ============================================
-// WEBSOCKET CONNECTION - FIXED
+// POLLING (instead of WebSocket)
 // ============================================
 
-function connectWebSocket() {
-    try {
-        // Use Socket.IO
-        state.socket = io(BACKEND_URL, {
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionAttempts: state.maxReconnectAttempts,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            timeout: 20000
-        });
-        
-        state.socket.on('connect', function() {
-            state.reconnectAttempts = 0;
-            addTimeline('WebSocket connected - Real-time updates active', 'info');
-            console.log('Socket.IO connected');
-            state.connected = true;
-        });
-        
-        state.socket.on('disconnect', function(reason) {
-            state.connected = false;
-            console.log('Socket.IO disconnected:', reason);
-            if (reason === 'io server disconnect') {
-                // The disconnection was initiated by the server, reconnect manually
-                state.socket.connect();
-            }
-            addTimeline('WebSocket disconnected - Reconnecting...', 'warning');
-        });
-        
-        state.socket.on('connect_error', function(error) {
-            console.log('Connection error:', error);
-            state.reconnectAttempts++;
-            if (state.reconnectAttempts >= state.maxReconnectAttempts) {
-                addTimeline('WebSocket connection failed - Using simulation', 'warning');
-                startLocalSimulation();
-            }
-        });
-        
-        state.socket.on('grid_update', function(data) {
+function startPolling() {
+    if (state.updateInterval) {
+        clearInterval(state.updateInterval);
+    }
+    // Fetch data every 2 seconds
+    state.updateInterval = setInterval(fetchCurrentData, 2000);
+    // Fetch immediately
+    fetchCurrentData();
+}
+
+function fetchCurrentData() {
+    const url = `${BACKEND_URL}/api/data/current?scenario=${state.currentScenario}`;
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
             updateDashboardWithData(data);
+        })
+        .catch(error => {
+            console.log('Error fetching data:', error);
         });
-        
-        state.socket.on('agent_response', function(data) {
-            handleAgentResponse(data);
-        });
-        
-        state.socket.on('simulation_result', function(data) {
-            handleSimulationResult(data);
-        });
-        
-        state.socket.on('scenario_changed', function(data) {
-            handleScenarioChanged(data);
-        });
-        
-        state.socket.on('connection_response', function(data) {
-            console.log('Connection response:', data);
-        });
-        
-    } catch(e) {
-        console.log('WebSocket connection error:', e);
-        addTimeline('WebSocket connection failed - Using simulation', 'warning');
-        startLocalSimulation();
-    }
-}
-
-// ============================================
-// HANDLE SOCKET EVENTS
-// ============================================
-
-function handleAgentResponse(data) {
-    DOM.agentStatus.textContent = data.status;
-    DOM.agentStatus.style.color = 
-        data.status === 'EMERGENCY' ? '#b33a2a' :
-        data.status === 'ALERT' ? '#b87a2a' :
-        data.status === 'WARNING' ? '#b87a2a' : '#2d7a4a';
-    DOM.agentMessage.textContent = data.message;
-    
-    const eventType = data.status === 'EMERGENCY' ? 'critical' : 
-                     data.status === 'ALERT' ? 'warning' : 'agent';
-    addTimeline('Agent: ' + data.status + ' - ' + data.message, eventType);
-}
-
-function handleSimulationResult(data) {
-    let output = 'Risk: ' + data.current_risk + '% → ' + data.simulated_risk + '%<br>';
-    output += 'Reduction: ' + data.reduction + '%<br>';
-    output += 'Status: ' + data.status;
-    DOM.simulationOutput.innerHTML = output;
-    DOM.simulationOutput.style.color = data.status === 'SAFE' ? '#2d7a4a' : '#b87a2a';
-    addTimeline('Simulation: ' + data.current_risk + '% → ' + data.simulated_risk + '%', 'simulation');
-}
-
-function handleScenarioChanged(data) {
-    state.currentScenario = data.scenario;
-    const names = {
-        'normal': 'Normal',
-        'overheat': 'Overheating',
-        'overload': 'Overload',
-        'voltage_drop': 'Voltage Drop'
-    };
-    DOM.currentScenario.textContent = names[data.scenario] || 'Normal';
-    
-    document.querySelectorAll('.scenario-tag').forEach(t => t.classList.remove('active'));
-    const tagMap = {
-        'normal': DOM.tagNormal,
-        'overheat': DOM.tagOverheat,
-        'overload': DOM.tagOverload,
-        'voltage_drop': DOM.tagVoltageDrop
-    };
-    if (tagMap[data.scenario]) {
-        tagMap[data.scenario].classList.add('active');
-    }
-}
-
-// ============================================
-// SEND MESSAGES TO BACKEND
-// ============================================
-
-function sendToBackend(message) {
-    if (state.socket && state.connected) {
-        try {
-            state.socket.emit(message.type, message);
-            console.log('Sent to backend:', message);
-        } catch(e) {
-            console.log('Error sending message:', e);
-        }
-    } else {
-        console.log('Not connected to backend, using local');
-        // Fallback to local
-        if (message.type === 'set_scenario') {
-            state.currentScenario = message.scenario;
-        } else if (message.type === 'run_agent') {
-            runLocalAgent();
-        } else if (message.type === 'run_simulation') {
-            runLocalSimulation();
-        }
-    }
 }
 
 // ============================================
@@ -281,43 +163,47 @@ function updateDashboardWithData(data) {
 
 function triggerOverheat() {
     state.currentScenario = 'overheat';
-    sendToBackend({ type: 'set_scenario', scenario: 'overheat' });
     updateScenarioUI('Overheating', '#b33a2a', DOM.tagOverheat);
-    addTimeline('Scenario loaded: Overheating', 'critical');
-    if (!state.connected) {
-        runLocalSimulation();
-        setTimeout(runLocalAgent, 800);
+    addTimeline('Scenario: Overheating', 'critical');
+    if (state.connected) {
+        fetchCurrentData();
+        setTimeout(runAgent, 500);
+    } else {
+        updateDashboard();
+        setTimeout(runAgent, 500);
     }
 }
 
 function triggerOverload() {
     state.currentScenario = 'overload';
-    sendToBackend({ type: 'set_scenario', scenario: 'overload' });
     updateScenarioUI('Overload', '#b87a2a', DOM.tagOverload);
-    addTimeline('Scenario loaded: Overload', 'warning');
-    if (!state.connected) {
-        runLocalSimulation();
-        setTimeout(runLocalAgent, 800);
+    addTimeline('Scenario: Overload', 'warning');
+    if (state.connected) {
+        fetchCurrentData();
+        setTimeout(runAgent, 500);
+    } else {
+        updateDashboard();
+        setTimeout(runAgent, 500);
     }
 }
 
 function triggerVoltageDrop() {
     state.currentScenario = 'voltage_drop';
-    sendToBackend({ type: 'set_scenario', scenario: 'voltage_drop' });
     updateScenarioUI('Voltage Drop', '#5a4a8b', DOM.tagVoltageDrop);
-    addTimeline('Scenario loaded: Voltage Drop', 'warning');
-    if (!state.connected) {
-        runLocalSimulation();
-        setTimeout(runLocalAgent, 800);
+    addTimeline('Scenario: Voltage Drop', 'warning');
+    if (state.connected) {
+        fetchCurrentData();
+        setTimeout(runAgent, 500);
+    } else {
+        updateDashboard();
+        setTimeout(runAgent, 500);
     }
 }
 
 function resetSystem() {
     state.currentScenario = 'normal';
-    sendToBackend({ type: 'set_scenario', scenario: 'normal' });
     updateScenarioUI('Normal', '#2d7a4a', DOM.tagNormal);
-    state.riskScore = 0;
-    addTimeline('System reset - Normal operation restored', 'info');
+    addTimeline('System reset', 'info');
     
     DOM.agentStatus.textContent = 'Monitoring';
     DOM.agentStatus.style.color = '#2d7a4a';
@@ -332,8 +218,10 @@ function resetSystem() {
         el.className = 'protection-status safe';
     });
     
-    if (!state.connected) {
-        startLocalSimulation();
+    if (state.connected) {
+        fetchCurrentData();
+    } else {
+        updateDashboard();
     }
 }
 
@@ -349,15 +237,6 @@ function updateScenarioUI(name, color, tagElement) {
 // ============================================
 
 function runAgent() {
-    if (state.connected) {
-        sendToBackend({ type: 'run_agent' });
-        addTimeline('Agent requested from backend', 'agent');
-    } else {
-        runLocalAgent();
-    }
-}
-
-function runLocalAgent() {
     const risk = parseInt(DOM.riskValue.textContent) || 0;
     let status, message, color;
     
@@ -392,7 +271,7 @@ function runLocalAgent() {
         el.className = className;
     });
     
-    addTimeline('Agent executed: ' + status + ' - ' + message, 
+    addTimeline('Agent: ' + status + ' - ' + message, 
         status === 'Emergency' ? 'critical' : 
         status === 'Alert' ? 'warning' : 'agent');
 }
@@ -402,15 +281,6 @@ function runLocalAgent() {
 // ============================================
 
 function runSimulation() {
-    if (state.connected) {
-        sendToBackend({ type: 'run_simulation' });
-        addTimeline('Simulation requested from backend', 'simulation');
-    } else {
-        runLocalSimulation();
-    }
-}
-
-function runLocalSimulation() {
     const currentRisk = parseInt(DOM.riskValue.textContent) || 0;
     const simulatedRisk = Math.max(0, currentRisk - 57);
     
@@ -446,7 +316,7 @@ function addTimeline(message, type) {
 }
 
 // ============================================
-// LOCAL SIMULATION (fallback when backend off)
+// LOCAL SIMULATION (fallback)
 // ============================================
 
 let localSimulationInterval = null;
@@ -455,11 +325,11 @@ function startLocalSimulation() {
     if (localSimulationInterval) {
         clearInterval(localSimulationInterval);
     }
-    localSimulationInterval = setInterval(updateLocalDashboard, 1000);
+    localSimulationInterval = setInterval(updateDashboard, 1000);
     addTimeline('Local simulation mode active', 'info');
 }
 
-function updateLocalDashboard() {
+function updateDashboard() {
     const noise = 0.95 + 0.1 * Math.random();
     
     let voltage, current, temperature;
@@ -594,16 +464,13 @@ window.runSimulation = runSimulation;
 // INIT
 // ============================================
 
-console.log('GRIDGUARD AI v2.0.0');
+console.log('GRIDGUARD AI v2.0.0 - Vercel Compatible');
 console.log('Backend URL:', BACKEND_URL);
-console.log('Press 1=Overheat, 2=Overload, 3=VoltageDrop, 4=Reset, 5=Agent, 6=Simulation');
 
 addTimeline('GRIDGUARD AI v2.0.0 - Starting...', 'info');
 
-// Try to connect to backend
 connectBackend();
 
-// If backend not available, local simulation starts automatically
 setTimeout(function() {
-    addTimeline('System ready - Use buttons or press 1-6', 'info');
+    addTimeline('Press 1-6 for quick actions', 'info');
 }, 1000);
